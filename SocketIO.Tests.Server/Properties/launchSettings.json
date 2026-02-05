@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "SocketIO.Tests.Server": {
-      "commandName": "Project",
-      "commandLineArgs": "server"
-    }
-  }
-}
