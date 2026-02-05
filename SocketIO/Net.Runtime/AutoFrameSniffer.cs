@@ -16,12 +16,12 @@ public sealed class AutoFrameSniffer
 
         _codecs = codecs?.ToList() ?? new List<IFrameCodec>
         {
-            new SocketIO.Net.Protocol.DelimitedCodec(null, (byte)'\n'),
-            new SocketIO.Net.Protocol.DelimitedCodec(0x02, 0x03), // STX/ETX
-            new SocketIO.Net.Protocol.DelimitedCodec(0x7E, 0x7E), // HDLC-like
-            new SocketIO.Net.Protocol.LengthFieldCodec(2, bigEndian:true, lengthOffset:0, headerSize:2, maxFrameBytes:4096),
-            new SocketIO.Net.Protocol.FixedLengthCodec(8),
-            new SocketIO.Net.Protocol.FixedLengthCodec(16),
+            new SocketIO.Net.Protocol.Codec.DelimitedCodec(null, (byte)'\n'),
+            new SocketIO.Net.Protocol.Codec.DelimitedCodec(0x02, 0x03), // STX/ETX
+            new SocketIO.Net.Protocol.Codec.DelimitedCodec(0x7E, 0x7E), // HDLC-like
+            new SocketIO.Net.Protocol.Codec.LengthFieldCodec(2, bigEndian:true, lengthOffset:0, headerSize:2, maxFrameBytes:4096),
+            new SocketIO.Net.Protocol.Codec.FixedLengthCodec(8),
+            new SocketIO.Net.Protocol.Codec.FixedLengthCodec(16),
         };
     }
 
