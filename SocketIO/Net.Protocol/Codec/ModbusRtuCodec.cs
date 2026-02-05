@@ -1,5 +1,4 @@
 using SocketIO.Net.Abstractions;
-using System.Buffers.Binary;
 
 namespace SocketIO.Net.Protocol.Codec;
 
@@ -22,7 +21,8 @@ public sealed class ModbusRtuCodec : IFrameCodec
     /// </summary>
     public ReadOnlyMemory<byte> Encode(ReadOnlySpan<byte> payload)
     {
-        if (payload.Length < 2) throw new ArgumentException("Payload Modbus RTU debe incluir addr+func.");
+        if (payload.Length < 2)
+            throw new ArgumentException("Payload Modbus RTU debe incluir addr+func.");
 
         var buf = new byte[payload.Length + 2];
         payload.CopyTo(buf);
@@ -39,7 +39,8 @@ public sealed class ModbusRtuCodec : IFrameCodec
         frame = default;
 
         // mínimo: addr(1) + func(1) + crc(2)
-        if (buffer.Length < 4) return false;
+        if (buffer.Length < 4)
+            return false;
 
         int scan = Math.Min(_opt.ScanLimitBytes, buffer.Length - 3);
 
@@ -47,21 +48,28 @@ public sealed class ModbusRtuCodec : IFrameCodec
         {
             var span = buffer.Slice(start);
 
-            if (!IsPlausibleAddress(span[0])) continue;
+            if (!IsPlausibleAddress(span[0]))
+                continue;
 
-            // Necesitamos al menos addr+func
-            if (span.Length < 4) break;
+            if (span.Length < 4)
+                break;
 
-            // Probar longitudes posibles según function code (request/response/exception)
-            foreach (int len in GetCandidateLengths(span))
+            bool incompletePossible = false;
+
+            // candidatos por function code (sin yield)
+            Span<int> lens = stackalloc int[8];
+            int count = FillCandidateLengths(span, lens);
+
+            for (int i = 0; i < count; i++)
             {
+                int len = lens[i];
+
                 if (len <= 0) continue;
                 if (len > _opt.MaxFrameBytes) continue;
 
                 if (span.Length < len)
                 {
-                    // puede ser una trama válida pero incompleta -> esperar más bytes
-                    // OJO: si start>0 y había basura al inicio, no la descartamos todavía.
+                    incompletePossible = true;
                     continue;
                 }
 
@@ -78,11 +86,13 @@ public sealed class ModbusRtuCodec : IFrameCodec
                 return true;
             }
 
-            // Si llegamos aquí: no hay frame válido desde este start.
-            // seguimos escaneando (resync).
+            // Si desde el inicio parecía frame válido pero incompleto => esperar más bytes
+            if (incompletePossible && start == 0)
+                return false;
+
+            // si start>0, seguimos escaneando (resync)
         }
 
-        // No se pudo decodificar todavía
         return false;
     }
 
@@ -93,90 +103,95 @@ public sealed class ModbusRtuCodec : IFrameCodec
     }
 
     /// <summary>
-    /// Devuelve longitudes candidatas para request/response.
-    /// Usa heurística por Function Code + campos byteCount.
+    /// Llena longitudes candidatas (request/response) según Function Code.
+    /// SIN yield, SIN closures.
+    /// Devuelve cantidad escrita en dst.
     /// </summary>
-    private static IEnumerable<int> GetCandidateLengths(ReadOnlySpan<byte> span)
+    private static int FillCandidateLengths(ReadOnlySpan<byte> span, Span<int> dst)
     {
+        int n = 0;
         byte func = span[1];
 
-        // Exception response: addr, func|0x80, exCode, crcLo, crcHi => 5
+        // helper: add len if room (sin local functions que capturen)
         if ((func & 0x80) != 0)
         {
-            yield return 5;
-            yield break;
+            if (n < dst.Length) dst[n++] = 5;
+            return n;
         }
 
-        // Respuestas de lectura (1,2,3,4): addr func byteCount data... crc2
+        // Read (1,2,3,4)
         if (func is 1 or 2 or 3 or 4)
         {
-            // Request típico read: 8 bytes (addr func start2 qty2 crc2)
-            yield return 8;
+            // Request típico: 8 bytes (addr func start2 qty2 crc2)
+            if (n < dst.Length) dst[n++] = 8;
 
-            // Response: necesita byteCount (3er byte)
+            // Response: addr func byteCount data... crc2
             if (span.Length >= 3)
             {
                 int bc = span[2];
-                yield return 3 + bc + 2; // = bc + 5
+                int len = bc + 5;
+                if (n < dst.Length) dst[n++] = len;
             }
 
-            yield break;
+            return n;
         }
 
-        // Write single coil/register (5,6): request y response = 8 bytes
+        // Write single (5,6): request y response = 8
         if (func is 5 or 6)
         {
-            yield return 8;
-            yield break;
+            if (n < dst.Length) dst[n++] = 8;
+            return n;
         }
 
-        // Write multiple coils/registers (15,16)
+        // Write multiple (15,16)
         if (func is 15 or 16)
         {
-            // Response echo: addr func start2 qty2 crc2 = 8
-            yield return 8;
+            // Response echo: 8
+            if (n < dst.Length) dst[n++] = 8;
 
-            // Request: addr func start2 qty2 byteCount data(byteCount) crc2 = 7 + bc + 2 = bc+9
+            // Request: addr func start2 qty2 byteCount data... crc2
+            // byteCount en offset 6
             if (span.Length >= 7)
             {
                 int bc = span[6];
-                yield return bc + 9;
+                int len = bc + 9;
+                if (n < dst.Length) dst[n++] = len;
             }
 
-            yield break;
+            return n;
         }
 
-        // Mask Write Register (22 / 0x16): request/response = 10
+        // Mask Write Register (22): request/response = 10
         if (func == 22)
         {
-            yield return 10;
-            yield break;
+            if (n < dst.Length) dst[n++] = 10;
+            return n;
         }
 
-        // Read/Write Multiple Registers (23 / 0x17)
+        // Read/Write Multiple Registers (23)
         if (func == 23)
         {
             // Response: addr func byteCount data... crc2
             if (span.Length >= 3)
             {
                 int bc = span[2];
-                yield return bc + 5;
+                int len = bc + 5;
+                if (n < dst.Length) dst[n++] = len;
             }
 
-            // Request: addr func readStart2 readQty2 writeStart2 writeQty2 byteCount data... crc2
-            // Header (addr+func + 2+2+2+2 + byteCount) = 1+1+2+2+2+2+1 = 11
+            // Request: byteCount en offset 10 (header 11 bytes + data + crc2)
             if (span.Length >= 11)
             {
                 int bc = span[10];
-                yield return 11 + bc + 2; // = bc + 13
+                int len = bc + 13;
+                if (n < dst.Length) dst[n++] = len;
             }
 
-            yield break;
+            return n;
         }
 
-        // Fallback: no sabemos el largo -> no adivinamos (para no tragarnos el stream)
-        // (Si tu protocolo usa function codes custom, aquí agregás reglas.)
-        yield break;
+        // Unknown => 0 candidatos
+        return n;
     }
 
     private static bool HasValidCrc(ReadOnlySpan<byte> frame)
