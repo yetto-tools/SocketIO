@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/Examples/">
     <Project Path="Examples/Sniffer.TCP/Sniffer.TCP.csproj" Id="90437b35-2485-4295-be42-e06e36cfe2d3" />
-    <Project Path="Examples/Sniffer.Test.Serial/Sniffer.Test.Serial.csproj" Id="911985c1-4fa0-4bc5-905d-e6ecb902fbb3" />
+    <Project Path="Examples/Sniffer.Test.Serial/Sniffer.Serial.csproj" Id="911985c1-4fa0-4bc5-905d-e6ecb902fbb3" />
     <Project Path="Examples/Sniffer.UDP/Sniffer.UDP.csproj" Id="f14ca361-73b0-489e-92fa-a600ca71b4f6" />
     <Project Path="Examples/SocketIO.Test.Serial.Connection/SocketIO.Test.Serial.Connection.csproj" Id="edf2da5a-dc45-4a37-8a45-130980aad2de" />
     <Project Path="Examples/SocketIO.Test.UDP/SocketIO.Test.UDP.csproj" Id="32484da0-7e10-4f3a-8dba-a71a48a04437" />
